@@ -1,0 +1,130 @@
+/**
+ * Bot WhatsApp Gaming
+ * Node.js + Baileys
+ * Style tag eSport / Pro
+ * Se sèlman bot la ki ka fè tag
+ */
+
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@adiwajshing/baileys");
+const qrcode = require("qrcode-terminal");
+
+// ---------------- CONFIG ----------------
+const BOT_NUMBER = "5796610603"; // Nimewo bot lan san +1
+const GUILD_NAME = "９00ＹＲㅤＲＥＩＧＮ悪";
+const RULES = `
+🔥 BIENVENUE DANS LA GUILDE 🔥
+Respèkte règle  ofisyèl yo  ! ⚔️
+`;
+
+// ---------------- START BOT ----------------
+async function startBot() {
+    const { state, saveCreds } = await useMultiFileAuthState("AUTH");
+
+    const sock = makeWASocket({
+        printQRInTerminal: true,
+        auth: state
+    });
+
+    sock.ev.on("creds.update", saveCreds);
+
+    // Reconnexion
+    sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
+        if(connection === "close") {
+            if(lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut){
+                startBot();
+            } else {
+                console.log("Bot logout !");
+            }
+        } else if(connection === "open") {
+            console.log("Bot connecté ✔");
+        }
+    });
+
+    // Resevwa mesaj
+    sock.ev.on("messages.upsert", async ({ messages }) => {
+        const msg = messages[0];
+        if(!msg.message) return;
+
+        const from = msg.key.remoteJid;
+        const sender = msg.key.participant || msg.key.remoteJid;
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
+
+        const cleanSender = sender.replace("@s.whatsapp.net","");
+
+        // ---------------- COMMANDES ----------------
+
+        // --- !pvp ---
+        if(text.toLowerCase() === "!pvp"){
+            if(cleanSender !== BOT_NUMBER){
+                return await sock.sendMessage(from,{text:"❌ Sèl bot lan ka fè tag nan gwoup sa."});
+            }
+
+            const metadata = await sock.groupMetadata(from);
+            const participants = metadata.participants.map(p => p.id).filter(p => p !== `${BOT_NUMBER}@s.whatsapp.net`);
+
+            if(participants.length < 2){
+                return await sock.sendMessage(from,{text:"❌ Pa gen ase joueurs nan group la pou PVP."});
+            }
+
+            // Chwazi 2 moun aleatwa
+            function chooseRandom(arr, n){
+                let result = [];
+                let copy = [...arr];
+                for(let i=0;i<n;i++){
+                    let idx = Math.floor(Math.random()*copy.length);
+                    result.push(copy[idx]);
+                    copy.splice(idx,1);
+                }
+                return result;
+            }
+
+            const selected = chooseRandom(participants,2);
+
+            await sock.sendMessage(from,{
+                text:`🔥 MATCH PVP FREE FIRE 🔥\n\n@${selected[0].split("@")[0]} vs @${selected[1].split("@")[0]}\nAl fè match Free Fire kounyea ! 🎮🔥\n\nLè match la fini, voye screen rezultat la nan gwoup la.`,
+                mentions: selected
+            });
+        }
+
+        // --- !roulette ---
+        if(text.toLowerCase() === "!roulette"){
+            const outcomes = ["Win 🏆","Lose ❌","Bonus 🔥","Critical 💥"];
+            const result = outcomes[Math.floor(Math.random()*outcomes.length)];
+            await sock.sendMessage(from,{text:`🎲 Roulette : ${result}`});
+        }
+
+        // --- Join Message ---
+        if(text.toLowerCase() === "!welcome"){
+            if(cleanSender !== BOT_NUMBER){
+                return await sock.sendMessage(from,{text:"❌ Sèl bot lan ka fè tag nan gwoup sa."});
+            }
+
+            const metadata = await sock.groupMetadata(from);
+            const participants = metadata.participants.map(p => p.id);
+            await sock.sendMessage(from,{
+                text:`${RULES}`,
+                mentions: participants
+            });
+        }
+
+        // --- !tournoi créer ---
+        if(text.toLowerCase() === "!tournoi créer"){
+            if(cleanSender !== BOT_NUMBER){
+                return await sock.sendMessage(from,{text:"❌ Sèl bot lan ka fè tag nan gwoup sa."});
+            }
+
+            const metadata = await sock.groupMetadata(from);
+            const participants = metadata.participants.map(p => p.id);
+            await sock.sendMessage(from,{
+                text:`🏆 TOURNOI OUVERT 🏆\n@tous joueurs, tapez !tournoi rejoindre pour participer !`,
+                mentions: participants
+            });
+        }
+
+        // --- !tournoi rejoindre / liste ---
+        // Pou senp demo, w ka ajoute logik liste + verification
+    });
+
+}
+
+startBot();
