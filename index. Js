@@ -128,3 +128,114 @@ async function startBot() {
 }
 
 startBot();
+const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@adiwajshing/baileys');
+
+const XP_STORE = {}; // Kenbe XP chak manm
+const TOURNOI_LIST = []; // Lis pou tournoi
+
+async function startBot() {
+    const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
+    const { version } = await fetchLatestBaileysVersion();
+    const sock = makeWASocket({ version, auth: state });
+
+    sock.ev.on('messages.upsert', async m => {
+        const msg = m.messages[0];
+        if (!msg.message || msg.key.fromMe) return;
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+
+        // =========================
+        // MINI-JEUX : !roulette
+        // =========================
+        if (text === '!roulette') {
+            const result = ['Win 🏆','Lose ❌','Bonus 💎','Crit ✨'];
+            const random = result[Math.floor(Math.random() * result.length)];
+            const sender = msg.key.participant || msg.key.remoteJid;
+            XP_STORE[sender] = (XP_STORE[sender] || 0) + 10;
+            await sock.sendMessage(msg.key.remoteJid, { text: `${sender} joue à la roulette : ${random}\n💎 +10 XP` });
+        }
+
+        // =========================
+        // PVP automatique
+        // =========================
+        else if (text === '!pvp') {
+            const groupMetadata = await sock.groupMetadata(msg.key.remoteJid);
+            let participants = groupMetadata.participants.map(p => p.id);
+
+            if (participants.length < 2) {
+                await sock.sendMessage(msg.key.remoteJid, { text: 'Pas assez de joueurs pour PVP !' });
+                return;
+            }
+
+            // Chwazi 2 moun random
+            let shuffled = participants.sort(() => 0.5 - Math.random());
+            let player1 = shuffled[0];
+            let player2 = shuffled[1];
+
+            const dmg1 = Math.floor(Math.random() * 100);
+            const dmg2 = Math.floor(Math.random() * 100);
+            const winner = dmg1 >= dmg2 ? player1 : player2;
+
+            XP_STORE[player1] = (XP_STORE[player1] || 0) + 10;
+            XP_STORE[player2] = (XP_STORE[player2] || 0) + 10;
+
+            await sock.sendMessage(msg.key.remoteJid, {
+                text: `⚔️ PVP FREE FIRE ⚔️
+${player1} (${dmg1} dmg) VS ${player2} (${dmg2} dmg)
+🏆 Gagnant: ${winner} !
+💎 +10 XP chak konbatan`
+            });
+        }
+
+        // =========================
+        // Gestion de clan : welcome
+        // =========================
+        else if (text === '!welcome') {
+            const sender = msg.key.participant;
+            await sock.sendMessage(msg.key.remoteJid, {
+                text: `@${sender.split('@')[0]} bienvenue dans la guilde !
+📜 Règle guild :
+1. Respect total
+2. Actif chaque semaine
+3. Pas d’insulte
+4. Participation aux tournois
+5. Reste fair-play`
+            });
+        }
+
+        // =========================
+        // Organisation tournoi
+        // =========================
+        else if (text === '!tournoi créer') {
+            TOURNOI_LIST.length = 0; // reset list
+            const groupMetadata = await sock.groupMetadata(msg.key.remoteJid);
+            const allMembers = groupMetadata.participants.map(p => p.id);
+            const mentions = allMembers.map(m => '@' + m.split('@')[0]).join(' ');
+            await sock.sendMessage(msg.key.remoteJid, { text: `Tournoi ouvert !\n${mentions}\nRéagissez avec !tournoi rejoindre` });
+        }
+
+        else if (text === '!tournoi liste') {
+            if (TOURNOI_LIST.length === 0) {
+                await sock.sendMessage(msg.key.remoteJid, { text: 'Aucun joueur dans le tournoi.' });
+            } else {
+                let listText = TOURNOI_LIST.map((p,i) => `${i+1}. @${p.split('@')[0]}`).join('\n');
+                await sock.sendMessage(msg.key.remoteJid, { text: `Liste joueurs :\n${listText}\nTotal : ${TOURNOI_LIST.length}` });
+            }
+        }
+
+        else if (text === '!tournoi rejoindre') {
+            const sender = msg.key.participant;
+            if (!TOURNOI_LIST.includes(sender)) {
+                TOURNOI_LIST.push(sender);
+                await sock.sendMessage(msg.key.remoteJid, { text: `@${sender.split('@')[0]} a rejoint le tournoi !` });
+            } else {
+                await sock.sendMessage(msg.key.remoteJid, { text: `@${sender.split('@')[0]} est déjà dans le tournoi.` });
+            }
+        }
+
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+    console.log('Bot WhatsApp Gaming en ligne ✅');
+}
+
+startBot();
